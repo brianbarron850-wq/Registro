@@ -1,0 +1,79 @@
+function doPost(e) {
+  // Recibimos los datos como texto plano para evitar bloqueos CORS
+  const data = JSON.parse(e.postData.contents);
+  const action = data.action;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let response = {};
+
+  try {
+    if (action === 'login') {
+      const ws = ss.getSheetByName('Usuarios');
+      const rows = ws.getDataRange().getValues();
+      let found = false;
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i][1] == data.pin) {
+          response = { success: true, usuario: rows[i][0] };
+          found = true; break;
+        }
+      }
+      if (!found) response = { success: false, error: 'PIN incorrecto' };
+    } 
+    else if (action === 'getDatos') {
+      const wsMov = ss.getSheetByName('Movimientos');
+      const rows = wsMov.getDataRange().getValues();
+      const configWs = ss.getSheetByName('Config');
+      const saldoInicial = configWs.getRange("B2").getValue() || 0;
+
+      let movimientos = [];
+      let saldoActual = saldoInicial;
+
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i][7] === 'Activo') {
+          saldoActual = rows[i][5]; // El saldo de la última fila activa
+          movimientos.push({
+            fecha: rows[i][0], motivo: rows[i][1], concepto: rows[i][2],
+            egreso: rows[i][3], ingreso: rows[i][4], saldo: rows[i][5], usuario: rows[i][6]
+          });
+        }
+      }
+      response = { success: true, movimientos: movimientos, saldoActual: saldoActual };
+    }
+    else if (action === 'addMovimiento') {
+      const wsMov = ss.getSheetByName('Movimientos');
+      const configWs = ss.getSheetByName('Config');
+      const rows = wsMov.getDataRange().getValues();
+      
+      let lastSaldo = configWs.getRange("B2").getValue() || 0;
+      for (let i = rows.length - 1; i > 0; i--) {
+        if (rows[i][7] === 'Activo') {
+          lastSaldo = rows[i][5];
+          break;
+        }
+      }
+
+      let ingreso = Number(data.ingreso) || 0;
+      let egreso = Number(data.egreso) || 0;
+      let nuevoSaldo = lastSaldo + ingreso - egreso;
+
+      wsMov.appendRow([data.fecha, data.motivo, data.concepto, egreso, ingreso, nuevoSaldo, data.usuario, 'Activo']);
+      response = { success: true, nuevoSaldo: nuevoSaldo };
+    }
+    else if (action === 'hacerCorte') {
+      const wsMov = ss.getSheetByName('Movimientos');
+      const configWs = ss.getSheetByName('Config');
+      const rows = wsMov.getDataRange().getValues();
+
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i][7] === 'Activo') {
+          wsMov.getRange(i + 1, 8).setValue('Cortado');
+        }
+      }
+      configWs.getRange("B2").setValue(Number(data.nuevoSaldoInicial));
+      response = { success: true };
+    }
+  } catch (err) {
+    response = { success: false, error: err.message };
+  }
+
+  return ContentService.createTextOutput(JSON.stringify(response)).setMimeType(ContentService.MimeType.JSON);
+}
