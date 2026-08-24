@@ -8,9 +8,9 @@
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
 
         :root {
-            --bg-color: #fdfaf6; /* Crema suave */
-            --primary: #f0a8b4; /* Rosa pastel */
-            --secondary: #a3d9c9; /* Menta pastel */
+            --bg-color: #fdfaf6;
+            --primary: #f0a8b4;
+            --secondary: #a3d9c9;
             --text-main: #5c5c5c;
             --card-bg: #ffffff;
         }
@@ -72,7 +72,7 @@
         /* Modal Corte */
         .modal { display: none; padding: 15px; background: #fff8fa; border: 2px dashed var(--primary); border-radius: 10px; margin-top: 20px; }
 
-        /* NUEVO: Pestañas de Navegación */
+        /* Pestañas de Navegación */
         .tabs-container { display: flex; gap: 10px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 5px; }
         .tab-btn { background-color: #e0e0e0; color: #555; border-radius: 8px 8px 0 0; padding: 10px 15px; }
         .tab-btn.activo { background-color: var(--card-bg); color: var(--primary); border-bottom: 3px solid var(--primary); box-shadow: none; transform: none; }
@@ -104,14 +104,14 @@
             <button class="btn-secundario" onclick="cargarDatos()">🔄 Actualizar Datos</button>
         </div>
 
-        <!-- NUEVO: Navegación -->
+        <!-- Navegación -->
         <div class="tabs-container">
             <button class="tab-btn activo" onclick="cambiarVista('vistaDashboard', this)">🏠 Panel Principal</button>
             <button class="tab-btn" onclick="cambiarVista('vistaTodosMov', this)">📋 Todos los Mov. (Historial)</button>
             <button class="tab-btn" onclick="cambiarVista('vistaCortes', this)">✂️ Historial de Cortes</button>
         </div>
 
-        <!-- VISTA 1: DASHBOARD (Original) -->
+        <!-- VISTA 1: DASHBOARD -->
         <div id="vistaDashboard" class="vista-seccion activa">
             <div class="card">
                 <h3>💰 Saldo Actual: $<span id="saldoActual" class="saldo-display">0.00</span></h3>
@@ -140,7 +140,6 @@
                             </tr>
                         </thead>
                         <tbody id="tablaMovimientos">
-                            <!-- Llenado por JS -->
                         </tbody>
                     </table>
                 </div>
@@ -176,7 +175,6 @@
                             </tr>
                         </thead>
                         <tbody id="tablaTodosMovimientos">
-                            <!-- Llenado por JS -->
                         </tbody>
                     </table>
                 </div>
@@ -195,7 +193,6 @@
                             </tr>
                         </thead>
                         <tbody id="tablaCortes">
-                            <!-- Llenado por JS -->
                         </tbody>
                     </table>
                 </div>
@@ -206,29 +203,37 @@
 
 <script>
     // --- CONFIGURACIÓN ---
-    // PEGA AQUÍ LA  DE TU GOOGLE APPS SCRIPT
+    // PEGA AQUÍ LA URL DE TU GOOGLE APPS SCRIPT (NUEVA IMPLEMENTACIÓN)
     const API_URL = 'https://script.google.com/macros/s/AKfycbyspjFQ8DHmcAkKgU-ISLj58B5rTPq24Lyyzhym0koxgXzXoOIo40Reu8l4FwAgXKAc/exec'; 
 
     let usuarioActual = "";
     let datosActuales = [];
-    let todosLosMovimientos = []; // NUEVO
-    let historialCortes = []; // NUEVO
+    let todosLosMovimientos = []; 
+    let historialCortes = []; 
     
-    // Variables temporales para guardar el corte
     let tempDetalleCorte = ""; 
     let tempGananciaCorte = 0; 
 
-    // --- FUNCIONES API BASE ---
+    // --- FUNCIONES API BASE (CORREGIDO PARA EVITAR CORS Y ERRORES) ---
     async function fetchAPI(payload) {
         const response = await fetch(API_URL, {
             method: 'POST',
+            redirect: 'follow', // Obliga a seguir la redirección de Google
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
         });
-        return await response.json();
+        
+        // Leemos primero el texto crudo para atrapar errores de permisos de Google
+        const text = await response.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            console.error("Error interpretando respuesta del servidor:", text);
+            throw new Error("La base de datos bloqueó la petición. Verifica permisos de Apps Script.");
+        }
     }
 
-    // --- NAVEGACIÓN (NUEVO) ---
+    // --- NAVEGACIÓN ---
     function cambiarVista(idVista, btn) {
         document.querySelectorAll('.vista-seccion').forEach(v => v.classList.remove('activa'));
         document.getElementById(idVista).classList.add('activa');
@@ -237,7 +242,7 @@
         btn.classList.add('activo');
     }
 
-    // --- LÓGICA DE LA APP ---
+    // --- LÓGICA DE LA APP (CON CONTROL DE ERRORES MEJORADO) ---
     async function iniciarSesion() {
         const pin = document.getElementById('pinInput').value;
         if (!pin) return alert("Ingresa un PIN");
@@ -253,9 +258,11 @@
                 document.getElementById('m_fecha').valueAsDate = new Date();
                 cargarDatos();
             } else {
-                alert(res.error);
+                alert(res.error); // Ej: "PIN incorrecto o usuario no encontrado"
             }
-        } catch (e) { alert("Error de conexión"); }
+        } catch (e) { 
+            alert("Fallo la conexión: " + e.message + "\n\nAsegúrate de que publicaste Apps Script con acceso a 'Cualquier persona'."); 
+        }
         document.getElementById('loginLoader').style.display = 'none';
     }
 
@@ -264,19 +271,18 @@
             const res = await fetchAPI({ action: 'getDatos' });
             if (res.success) {
                 datosActuales = res.movimientos;
-                todosLosMovimientos = res.todosMovimientos; // NUEVO
-                historialCortes = res.cortes; // NUEVO
+                todosLosMovimientos = res.todosMovimientos;
+                historialCortes = res.cortes;
                 
                 document.getElementById('saldoActual').innerText = parseFloat(res.saldoActual).toFixed(2);
                 
                 renderTablaMovimientosActivos();
-                renderTablaTodosMovimientos(); // NUEVO
-                renderTablaCortes(); // NUEVO
+                renderTablaTodosMovimientos();
+                renderTablaCortes();
             }
         } catch (e) { alert("Error al cargar datos."); }
     }
 
-    // TABLA 1 (Original - Activos)
     function renderTablaMovimientosActivos() {
         const tbody = document.getElementById('tablaMovimientos');
         tbody.innerHTML = "";
@@ -296,7 +302,6 @@
         });
     }
 
-    // TABLA 2 (NUEVA - Todos los registros)
     function renderTablaTodosMovimientos() {
         const tbody = document.getElementById('tablaTodosMovimientos');
         tbody.innerHTML = "";
@@ -318,7 +323,6 @@
         });
     }
 
-    // TABLA 3 (NUEVA - Cortes)
     function renderTablaCortes() {
         const tbody = document.getElementById('tablaCortes');
         tbody.innerHTML = "";
@@ -413,7 +417,6 @@
         
         if(transferencias === 0) htmlDeudas += "✨ Todo está equilibrado, no es necesario hacer transferencias.<br>";
 
-        // NUEVO: Guardar en variables globales para enviarlas al servidor
         tempDetalleCorte = htmlDeudas;
         tempGananciaCorte = gananciaTotal.toFixed(2);
 
@@ -428,7 +431,6 @@
         document.getElementById('corteLoader').style.display = 'block';
         
         try {
-            // NUEVO: Enviamos también la ganancia y el detalle calculado al backend
             const res = await fetchAPI({ 
                 action: 'hacerCorte', 
                 nuevoSaldoInicial: nuevoSaldo,
